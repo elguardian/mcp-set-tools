@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.github.elguardian</groupId>
+    <artifactId>mcp-set-tools-apps</artifactId>
+    <version>2.0.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>mcp-set-tools-arquillian-it</artifactId>
+  <name>mcp-set-tools-arquillian-it</name>
+  <description>
+    Verifies the mcp-set-tools agent + maven plugin integrate correctly with Arquillian.
+
+    The embedded container runs tests in the same JVM as failsafe (agent loaded via argLine).
+    The arquillian.xml comment shows the managed-container pattern that uses the
+    agent.properties file (written by mcp-set-tools:prepare-agent) so that
+    ${mcpsettools.argLine} resolves in javaVmArguments without extra user configuration.
+  </description>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.jboss.arquillian</groupId>
+        <artifactId>arquillian-bom</artifactId>
+        <version>1.9.1.Final</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.jboss.arquillian.junit5</groupId>
+      <artifactId>arquillian-junit5-container</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Read and assert on agent recordings -->
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>mcp-set-tools-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- 1. Configure the agent and write agent.properties -->
+      <plugin>
+        <groupId>io.github.elguardian</groupId>
+        <artifactId>mcp-set-tools-maven-plugin</artifactId>
+        <version>${project.version}</version>
+        <executions>
+          <execution>
+            <goals><goal>prepare-agent</goal></goals>
+            <configuration>
+              <!-- fixture.* is outside the agent's always-excluded io.github.elguardian.mcpsettools.* namespace -->
+              <includes>
+                <include>fixture\..*</include>
+              </includes>
+              <!-- Manual mode: each test starts and stops its own recording -->
+              <record>manual</record>
+              <jmx>off</jmx>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- 2. Run ITs with the agent in argLine and load agent.properties as system props -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <!-- Embedded-container scenario: agent in this JVM's argLine -->
+          <argLine>${mcpsettools.argLine}</argLine>
+          <!--
+            Managed-container scenario (demonstrated in arquillian.xml):
+            Loading agent.properties here makes ${mcpsettools.argLine} available as a
+            system property so Arquillian resolves it in javaVmArguments at test runtime.
+          -->
+          <systemPropertiesFile>${project.build.directory}/mcp-set-tools/agent.properties</systemPropertiesFile>
+          <systemPropertyVariables>
+            <!-- Let tests locate the output directory without parsing argLine -->
+            <mcpsettools.output>${project.build.directory}/mcp-set-tools</mcpsettools.output>
+          </systemPropertyVariables>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

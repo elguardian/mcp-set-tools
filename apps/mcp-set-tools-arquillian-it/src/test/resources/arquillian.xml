@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<arquillian xmlns="http://jboss.org/schema/arquillian"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://jboss.org/schema/arquillian
+                                http://www.jboss.org/schema/arquillian/arquillian_1_0.xsd">
+
+    <!--
+      Embedded container: tests run @RunAsClient in the failsafe fork.
+      The agent is already active there via <argLine>${mcpsettools.argLine}</argLine>.
+    -->
+    <container qualifier="embedded" default="true"/>
+
+    <!--
+      ═══ WildFly managed container — copy, uncomment, and set jbossHome ═══
+
+      1. In pom.xml, keep <systemPropertiesFile> pointing at the agent.properties
+         file written by mcp-set-tools:prepare-agent. Failsafe loads it into the
+         test JVM so that ${mcpsettools.argLine} resolves from System.getProperties()
+         when Arquillian reads this file at runtime.
+
+      2. Remove the 'embedded' container above and uncomment this block:
+
+    <container qualifier="wildfly-managed" default="true">
+        <configuration>
+            <property name="jbossHome">${jboss.home}</property>
+            <property name="javaVmArguments">
+                ${mcpsettools.argLine} -Xmx512m -XX:MaxMetaspaceSize=256m
+            </property>
+        </configuration>
+    </container>
+
+      The agent automatically appends io.github.elguardian.mcpsettools.rt to
+      jboss.modules.system.pkgs when it detects a JBoss Modules JVM, so no
+      jbossModules=true in the Maven plugin is required.
+    -->
+
+</arquillian>

@@ -12,11 +12,15 @@ import io.github.elguardian.mcpsettools.rt.Watch;
 /** Second boot stage, loaded once the runtime is on the bootstrap class path. */
 final class Installer {
 
+    static final String RT_PACKAGE = "io.github.elguardian.mcpsettools.rt";
+    private static final String JBOSS_PKGS_PROP = "jboss.modules.system.pkgs";
+
     private Installer() {
     }
 
     static void install(AgentConfig config, Instrumentation inst, boolean attached) {
         config.warnings.forEach(w -> System.err.println("[mcp-set-tools] " + w));
+        ensureJBossModulesVisibility();
         Recorder.configure(config.out, config.args, config.verbose);
         if (config.recordAtStartup) {
             Recorder.start(config.label);
@@ -29,6 +33,22 @@ final class Installer {
         Watch.controller(new WatchControl(inst));
         if (config.jmxDelay != AgentConfig.JMX_OFF) {
             RecorderControl.registerLater(config.jmxDelay);
+        }
+    }
+
+    /**
+     * When running inside a JBoss Modules JVM (WildFly / JBoss EAP), the probe runtime must be
+     * visible to all module class loaders. The startup script already sets
+     * {@code jboss.modules.system.pkgs}; we append our package if it is not already there, so the
+     * user does not need {@code jbossModules=true} in the Maven plugin configuration.
+     */
+    private static void ensureJBossModulesVisibility() {
+        String existing = System.getProperty(JBOSS_PKGS_PROP);
+        if (existing == null) {
+            return;
+        }
+        if (!existing.contains(RT_PACKAGE)) {
+            System.setProperty(JBOSS_PKGS_PROP, existing.isEmpty() ? RT_PACKAGE : existing + "," + RT_PACKAGE);
         }
     }
 

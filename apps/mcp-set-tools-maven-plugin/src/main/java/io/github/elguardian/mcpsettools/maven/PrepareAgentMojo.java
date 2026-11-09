@@ -2,6 +2,8 @@ package io.github.elguardian.mcpsettools.maven;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -20,14 +22,32 @@ import org.apache.maven.project.MavenProject;
 
 /**
  * Sets a project property (default {@code mcpsettools.argLine}) to the {@code -javaagent:} argument
- * for the mcp-set-tools agent, to be used in surefire/failsafe {@code argLine} or in an Arquillian
- * container's {@code javaVmArguments}. The jar path alone is in {@code mcpsettools.agentJar}.
+ * for the mcp-set-tools agent, and writes those values to a properties file for Arquillian integration.
+ *
+ * <h3>Surefire / Failsafe (embedded or client-side tests)</h3>
+ * <pre>{@code
+ * <argLine>${mcpsettools.argLine}</argLine>
+ * }</pre>
+ *
+ * <h3>Arquillian managed container (agent in the WildFly JVM)</h3>
+ * Point failsafe at the generated properties file so that Arquillian can read the value:
+ * <pre>{@code
+ * <systemPropertiesFile>${project.build.directory}/mcp-set-tools/agent.properties</systemPropertiesFile>
+ * }</pre>
+ * Then reference the property in {@code arquillian.xml}:
+ * <pre>{@code
+ * <property name="javaVmArguments">${mcpsettools.argLine} -Xmx512m</property>
+ * }</pre>
+ * The agent automatically appends {@code io.github.elguardian.mcpsettools.rt} to
+ * {@code jboss.modules.system.pkgs} when it detects a JBoss Modules JVM, so
+ * {@code jbossModules=true} is only needed if that property is not already set by the
+ * WildFly startup script.
  */
 @Mojo(name = "prepare-agent", defaultPhase = LifecyclePhase.INITIALIZE, threadSafe = true)
 public class PrepareAgentMojo extends AbstractMojo {
 
     static final String AGENT_KEY = "io.github.elguardian:mcp-set-tools-agent";
-    static final String JBOSS_SYSTEM_PKGS = "org.jboss.byteman,io.github.elguardian.mcpsettools.rt";
+    static final String JBOSS_SYSTEM_PKGS = "io.github.elguardian.mcpsettools.rt";
 
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
     MavenProject project;
@@ -78,6 +98,16 @@ public class PrepareAgentMojo extends AbstractMojo {
     @Parameter(property = "mcpsettools.skip", defaultValue = "false")
     boolean skip;
 
+    /**
+     * Properties file written by this goal. Failsafe / Surefire can load it via
+     * {@code <systemPropertiesFile>}, making {@code ${mcpsettools.argLine}} available to
+     * Arquillian when it resolves system-property expressions in {@code arquillian.xml}.
+     * Set to an empty string to skip writing the file.
+     */
+    @Parameter(property = "mcpsettools.propertiesFile",
+            defaultValue = "${project.build.directory}/mcp-set-tools/agent.properties")
+    File propertiesFile;
+
     @Override
     public void execute() throws MojoExecutionException {
         if (skip) {
@@ -100,6 +130,29 @@ public class PrepareAgentMojo extends AbstractMojo {
         project.getProperties().setProperty(propertyName, value);
         project.getProperties().setProperty("mcpsettools.agentJar", agent.getFile().getAbsolutePath());
         getLog().info(propertyName + " set to " + value);
+        writePropertiesFile(value, agent.getFile().getAbsolutePath());
+    }
+
+    private void writePropertiesFile(String argLine, String agentJar) throws MojoExecutionException {
+        if (propertiesFile == null || propertiesFile.getPath().isEmpty()) {
+            return;
+        }
+        try {
+            Files.createDirectories(propertiesFile.toPath().getParent());
+            try (Writer w = Files.newBufferedWriter(propertiesFile.toPath(), StandardCharsets.ISO_8859_1)) {
+                w.write("# mcp-set-tools agent properties - load via <systemPropertiesFile> in failsafe/surefire\n");
+                w.write(propertyName + "=" + escape(argLine) + "\n");
+                w.write("mcpsettools.agentJar=" + escape(agentJar) + "\n");
+            }
+            getLog().info("mcp-set-tools agent properties written to " + propertiesFile);
+        } catch (IOException e) {
+            throw new MojoExecutionException("Cannot write " + propertiesFile, e);
+        }
+    }
+
+    /** Minimal Java-properties escaping for backslashes (common in Windows paths). */
+    private static String escape(String value) {
+        return value.replace("\\", "\\\\");
     }
 
     String options() {

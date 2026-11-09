@@ -18,5 +18,6 @@
     <module>mcp-set-tools-mcp</module>
     <module>mcp-set-tools-cli</module>
     <module>mcp-set-tools-maven-plugin</module>
+    <module>mcp-set-tools-arquillian-it</module>
   </modules>
 </project>
